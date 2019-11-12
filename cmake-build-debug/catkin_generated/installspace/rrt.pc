@@ -1,0 +1,8 @@
+prefix=/usr/local
+
+Name: rrt
+Description: Description of rrt
+Version: 0.0.0
+Cflags: -I/usr/local/include
+Libs: -L/usr/local/lib -lrrt
+Requires: ackermann_msgs geometry_msgs roscpp rospy sensor_msgs std_msgs tf

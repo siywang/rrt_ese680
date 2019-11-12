@@ -1,0 +1,8 @@
+prefix=/home/siyan/SiyanWang_ws/src/f1_10/rrt/cmake-build-debug/devel
+
+Name: rrt
+Description: Description of rrt
+Version: 0.0.0
+Cflags: -I/home/siyan/SiyanWang_ws/src/f1_10/rrt/include
+Libs: -L/home/siyan/SiyanWang_ws/src/f1_10/rrt/cmake-build-debug/devel/lib -lrrt
+Requires: ackermann_msgs geometry_msgs roscpp rospy sensor_msgs std_msgs tf

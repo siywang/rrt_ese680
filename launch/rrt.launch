@@ -1,0 +1,12 @@
+<launch>
+  <!-- Parameters -->
+  <rosparam command="load" file="$(find rrt)/config/rrt_params.yaml" />
+
+  
+ 
+
+  <!-- nodes -->
+
+  <node pkg="rrt" name="rrt_node" type="rrt_node" output="screen"/>
+
+</launch>
