@@ -7,6 +7,7 @@
 // Make sure you have read through the header file as well
 
 #include "rrt/rrt.h"
+#include "rrt/read_way_point_CSVfile.h"
 
 // Destructor of the RRT class
 RRT::~RRT() {
@@ -26,11 +27,27 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     nh_.getParam("lookahead", lookahead_dist);
     nh_.getParam("step", step);
     nh_.getParam("goal_threshold", goal_threshold);
+    nh_.getParam("iteration", iteration);
+
+    vector<vector<float>> waypoint_data_long = read_way_point_CSVfile("/home/siyan/SiyanWang_ws/src/f1_10/rrt/gtpose.csv");
+    waypoint_length = waypoint_data_long[0].size();
+    vector<float> waypoint_data1;
+    vector<float> waypoint_data2;
+    vector<float> waypoint_data3;
+    for (int i = 0; i < waypoint_length; i+=250) {
+        waypoint_data1.push_back(waypoint_data_long[0][i]);
+        waypoint_data2.push_back(waypoint_data_long[1][i]);
+        waypoint_data3.push_back(waypoint_data_long[2][i]);
+    }
+    waypoint_data.push_back(waypoint_data1);
+    waypoint_data.push_back(waypoint_data2);
+    waypoint_data.push_back(waypoint_data3);
+    waypoint_length = waypoint_data[0].size();
 
 
 
     // ROS publishers // TODO: create publishers for the the drive topic, and other topics you might need
-    //drive_pub = nh_.advertise<ackermann_msgs::AckermannDriveStamped>("nav", 10);
+    drive_pub = nh_.advertise<ackermann_msgs::AckermannDriveStamped>("drive", 10);
     map_pub = nh_.advertise<nav_msgs::OccupancyGrid>("gridMap", 1, true);
 
     // ROS subscribers // TODO: create subscribers as you need
@@ -94,14 +111,15 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         int col = get_col(transform(x, y).point.x);
         int row = get_row(transform(x, y).point.y);
 
+
         //inflation
         for (int j = -inf; j <= inf; j++) {
             for (int k = -inf; k <= inf; k++) {
                 int col_inf = col - k;
                 int row_inf = row - j; // inf: inflation
                 int index_inf = row_col_to_index(row_inf, col_inf);// 1D index
-                //gridMap_dynamic.data[index_inf] = range > lookahead_dist ? 0 : 100;
-                gridMap_dynamic.data[index_inf] = 100;
+                gridMap_dynamic.data[index_inf] = range > lookahead_dist ? 0 : 100;
+               // gridMap_dynamic.data[index_inf] = 100;
             }
         }
     }
@@ -112,6 +130,7 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
     }
 
     map_pub.publish(gridMap_final); // publish the final grid map
+
     // clear obstacles after passing it
     gridMap_dynamic.data.assign(gridMap_dynamic.info.height * gridMap_dynamic.info.width,0);
     std::cout << "height: " << gridMap_dynamic.info.height << std::endl;
@@ -119,7 +138,6 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
     std::cout << "resolution: " << gridMap_dynamic.info.resolution << std::endl;
     std::cout << "origin: " << gridMap_dynamic.info.origin << std::endl;
 }
-
 
 geometry_msgs::PointStamped RRT::transform(double x, double y) {
     /*
@@ -171,25 +189,88 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
     // TODO: fill in the RRT main loop
     // TODO: fill in the RRT main loop
     car_pose_msg = odom_msg->pose.pose;
+    double currentX = car_pose_msg.position.x; //vehicle pose X
+    double currentY = car_pose_msg.position.y; //vehicle pose Y
+    double currentTheta = convert_to_Theta(car_pose_msg.orientation);
+
+    float csv_offset_x = 0;
+    float csv_offset_y = 0;
+
+    float waypoint_x = 0;
+    float waypoint_y=  0;
+    double waypoint_distance = sqrt( pow(currentX - waypoint_x, 2) + pow(currentY - waypoint_y, 2) );
+    float distance_min = 10000;
+    float ind_min = 0;
+
+    for(int i = 0; i < waypoint_length; i += 1){
+        double distance = sqrt( pow(currentX - (waypoint_data[0][i] - csv_offset_x), 2) + pow(currentY - (waypoint_data[1][i] - csv_offset_y), 2) );
+        rot_waypoint_x = (waypoint_data[0][i] - currentX) * cos(-currentTheta) - (waypoint_data[1][i] - currentY) * sin(-currentTheta);
+        rot_waypoint_y = (waypoint_data[0][i] - currentX) * sin(-currentTheta) + (waypoint_data[1][i] - currentY) * cos(-currentTheta);
+        if (distance_min > distance && distance >= look_ahead_distance && rot_waypoint_x > 0) {
+            distance_min = distance;
+            ind_min = i;
+        }
+    }
+
+    last_index = (int)ind_min;
+    waypoint_x = waypoint_data[0][last_index];
+    waypoint_y = waypoint_data[1][last_index];
+
+    rot_waypoint_x = (waypoint_x - currentX) * cos(-currentTheta) - (waypoint_y - currentY) * sin(-currentTheta);
+    rot_waypoint_y = (waypoint_x - currentX) * sin(-currentTheta) + (waypoint_y - currentY) * cos(-currentTheta);
+
+    // TODO: should I use waypoint_x or rot_waypoint_x ????
+    // find goal by selecting the best point in way point at ceratin lookahead distance
+    double goal_x = rot_waypoint_x;
+    double goal_y = rot_waypoint_y;
+
+    std:: cout << "??????? " << waypoint_x << std::endl;
+    std:: cout << "??????? " << waypoint_y << std::endl;
+
     // tree as std::vector
     std::vector<Node> tree;
+    std::vector<Node> path;
     Node root;
     root.x = car_pose_msg.position.x;
     root.y = car_pose_msg.position.y;
     root.is_root = true;
 
-    std::vector<double> sampled = sample();
-    nearest_node_index = nearest(tree, sampled);
-
-
-
-
-
+    // RRT main loop
+//    for(int i = 0; i < iteration; i++){
+//        std::vector<double> sampled = sample();
+//        nearest_node_index = nearest(tree, sampled);
+//        Node new_node = steer(tree[nearest_node_index],sampled);
+//        bool collision = check_collision(tree[nearest_node_index], new_node);
+//
+//        if(collision) {
+//            continue;
+//        } else{
+//             tree.push_back(new_node);
+//             if(is_goal(new_node, goal_x,goal_y)){
+//                 path = find_path(tree, new_node);
+//                 break;
+//             }
+//        }
+//    }
 
 
     // path found as Path message
 
 }
+
+double RRT:: convert_to_Theta(geometry_msgs::Quaternion msg){
+    // the incoming geometry_msgs::Quaternion is transformed to a tf::Quaterion
+    tf::Quaternion quat;
+    tf::quaternionMsgToTF(msg, quat);
+
+    // the tf::Quaternion has a method to acess roll pitch and yaw
+    double roll, pitch, yaw;
+    tf::Matrix3x3(quat).getRPY(roll, pitch, yaw);
+
+    //theta is just the yaw angle
+    return yaw;
+}
+
 
 std::vector<double> RRT::sample() {
     // This method returns a sampled point from the free space
@@ -296,8 +377,6 @@ bool RRT::check_collision(Node &nearest_node, Node &new_node) {
         int col = get_col(new_node.x);
         int row = get_row(new_node.y);
 
-//        int col = static_cast<int>((new_node.x - gridMap_dynamic.info.origin.position.x) / gridMap_dynamic.info.resolution); // cell
-//        int row = static_cast<int>((new_node.y - gridMap_dynamic.info.origin.position.y) / gridMap_dynamic.info.resolution); // cell
         int index = row_col_to_index(row, col); // get index in grid map
         if (gridMap_final.data[index] == 100) {
             collision = true;
@@ -337,7 +416,7 @@ std::vector<Node> RRT::find_path(std::vector<Node> &tree, Node &latest_added_nod
 
     std::vector<Node> found_path;
     found_path.push_back(latest_added_node);
-    int pos = (int) tree.size() - 1;
+    int pos = (int) tree.size() - 1; // position of node
     while (pos != 0) {
         found_path.push_back(tree[tree[pos].parent]);
         pos = tree[pos].parent;

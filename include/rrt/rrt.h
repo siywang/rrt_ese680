@@ -17,6 +17,7 @@
 #include <nav_msgs/OccupancyGrid.h>
 #include <tf/transform_listener.h>
 #include <nav_msgs/Odometry.h>
+#include <visualization_msgs/Marker.h>
 
 // standard
 #include <math.h>
@@ -51,6 +52,7 @@ private:
 
     // ros pub/sub
     // TODO: add the publishers and subscribers you need
+
     ros::Publisher map_pub;
     ros::Publisher drive_pub;
     ros::Subscriber pf_sub_;
@@ -60,17 +62,27 @@ private:
     nav_msgs::OccupancyGrid gridMap_static;
     nav_msgs::OccupancyGrid gridMap_dynamic;
     nav_msgs::OccupancyGrid gridMap_final;
-    int lookahead_dist = 0; // lookahead distance
+    int lookahead_dist = 0; // lookahead distance for gird mapping
     int inf = 0; // inflation size
 
     // tf stuff
     tf::TransformListener listener;
 
-    // TODO: create RRT params
+    // Pure Purist
+    std::vector<std::vector<float>> waypoint_data;
+    float look_ahead_distance = 0.7; // globally, long term goal
+    int waypoint_length = 0;
+    double rot_waypoint_x = 0;
+    double rot_waypoint_y = 0;
+    int last_index = -1;
+    static double convert_to_Theta(geometry_msgs::Quaternion msg);
+
+    // RRT params
     geometry_msgs::Pose car_pose_msg; // car's current location
     double step = 0.0;
     int nearest_node_index=0;
     double goal_threshold;
+    int iteration = 0; // rrt main loops
 
 
     // random generator, use this
@@ -86,8 +98,7 @@ private:
     int get_row(double y);
     geometry_msgs::PointStamped transform(double x, double y); // transfomation between laser and map frame
 
-    // callbacks
-    // where rrt actually happens
+    // callbacks  where rrt actually happens
     //void pf_callback(const geometry_msgs::PoseStamped::ConstPtr& pose_msg);
     void pf_callback(const nav_msgs::Odometry ::ConstPtr &odom_msg);
     // updates occupancy grid

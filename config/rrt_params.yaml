@@ -2,7 +2,7 @@
 # inflation size
 inflation: 1
 # lookahead distance for updating grid map
-lookahead: 5
+lookahead: 6
 
 # Topics that RRT listens to
 # TODO: change this to the pose topic published particle filter
@@ -15,5 +15,6 @@ scan_topic: "scan"
 # visualization
 
 # Parameters for RRT
-step: 0.3
-goal_threshold: 0.15
+step: 0.3 # used for expanding the tree
+goal_threshold: 0.15 # close enough to goal
+iteration: 200 # main loop iteration nums
