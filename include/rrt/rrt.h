@@ -68,18 +68,23 @@ private:
 
     // TODO: create RRT params
     geometry_msgs::Pose car_pose_msg; // car's current location
+    double step = 0.0;
+    int nearest_node_index=0;
+    double goal_threshold;
 
 
     // random generator, use this
     // https://stackoverflow.com/questions/39288595/why-not-just-use-random-device
     std::random_device rd;  //Will be used to obtain a seed for the random number engine
     std::mt19937 gen{rd()};
-    std::uniform_real_distribution<double> x_dist;
-    std::uniform_real_distribution<double> y_dist;
+    std::uniform_real_distribution<double> x_dist{0.2,1.0}; // need tuning
+    std::uniform_real_distribution<double> y_dist{-1.0,1.0}; // need tuning
 
     //map methods
     int row_col_to_index(int row, int col);
-    geometry_msgs::PointStamped transform(double x, double y);
+    int get_col(double x);
+    int get_row(double y);
+    geometry_msgs::PointStamped transform(double x, double y); // transfomation between laser and map frame
 
     // callbacks
     // where rrt actually happens
