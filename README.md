@@ -8,8 +8,8 @@
 # TODO:
 
 - Now rrt methods are filled, need to write the main loop and test 
-- Need to tune parameters
 - Need to integrate with pure purist for trajectory execution 
+- Need to tune parameters
 - Need to Visualize path...
 
 - debug. 
