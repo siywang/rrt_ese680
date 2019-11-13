@@ -46,28 +46,18 @@ typedef struct Node {
 class RRT {
 public:
     RRT(ros::NodeHandle &nh);
-
     virtual ~RRT();
-
 private:
     ros::NodeHandle nh_;
 
     // ros pub/sub
-    // TODO: add the publishers and subscribers you need
-
-    ros::Publisher map_pub; // publish gird map
-    ros::Publisher drive_pub; // publish drive
+    ros::Publisher map_pub;
+    ros::Publisher drive_pub;
     ros::Subscriber pf_sub_;
     ros::Subscriber scan_sub_;
+    ros::Subscriber pose_sub;
 
-    //map stuff
-    nav_msgs::OccupancyGrid gridMap_static;
-    nav_msgs::OccupancyGrid gridMap_dynamic;
-    nav_msgs::OccupancyGrid gridMap_final;
-    int lookahead_dist = 0; // lookahead distance for gird mapping
-    int inf = 0; // inflation size
-
-    // visualization publishers
+    // visualization stuff
     ros::Publisher waypoint_pub;
     ros::Publisher tree_lines_pub;
     ros::Publisher tree_nodes_pub;
@@ -77,77 +67,67 @@ private:
     visualization_msgs::Marker tree_line_marker;
     visualization_msgs::Marker path_line_marker;
 
+    //map stuff
+    nav_msgs::OccupancyGrid gridMap_static;
+    nav_msgs::OccupancyGrid gridMap_dynamic;
+    nav_msgs::OccupancyGrid gridMap_final;
+    float lookahead_dist = 0; // lookahead distance for gird mapping
+    int inf = 0; // inflation size
+
     // tf stuff
     tf::TransformListener listener;
 
     // Pure Purist
     std::vector<std::vector<float>> waypoint_data;
-    float look_ahead_distance = 0.7; // globally, long term goal
-    float short_term_goal = 0.5;
+
     int waypoint_length = 0;
     double rot_waypoint_x = 0;
     double rot_waypoint_y = 0;
     int last_index = -1;
-    float steering_angle = 0.0;
-    float angle_speed = 1.8;
-    float nominal_speed = 3;
-
-
     static double convert_to_Theta(geometry_msgs::Quaternion msg);
+    float nominal_speed;
+    std::vector<Node> old_path;
+    float steering_angle; 
+    float angle_factor;
+    float angle_speed;
 
     // RRT params
     geometry_msgs::Pose car_pose_msg; // car's current location
-    double step = 0.0; // expand the tree towards the sample point with step size
+    double step = 0.0;
     int nearest_node_index = 0;
     double goal_threshold;
     int iteration = 0; // rrt main loops
-
+    float sample_width;
+    float sample_depth;
+    float neighbor_dist;
 
     // random generator, use this
     // https://stackoverflow.com/questions/39288595/why-not-just-use-random-device
     std::random_device rd;  //Will be used to obtain a seed for the random number engine
     std::mt19937 gen{rd()};
-    std::uniform_real_distribution<double> x_dist{0, 5.0}; // need tuning
-    std::uniform_real_distribution<double> y_dist{-1.0, 1.0}; // need tuning
 
     //map methods
     int row_col_to_index(int row, int col);
-
-    int get_col(double x); // get column from x to col
-
-    int get_row(double y); // get column from y to col
-
+    int get_col(double x);
+    int get_row(double y);
     geometry_msgs::PointStamped transform(double x, double y); // transfomation between laser and map frame
 
     // callbacks  where rrt actually happens
-    //void pf_callback(const geometry_msgs::PoseStamped::ConstPtr& pose_msg);
-    void pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg);
-
+    void pf_callback(const geometry_msgs::PoseStamped::ConstPtr& pose_msg);
+    // void pf_callback(const nav_msgs::Odometry ::ConstPtr &odom_msg);
     // updates occupancy grid
-    void scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg);
-
-    void setAngleAndVelocity(float u);
-
+    void scan_callback(const sensor_msgs::LaserScan::ConstPtr& scan_msg);
 
     // RRT methods
     std::vector<double> sample();
-
     int nearest(std::vector<Node> &tree, std::vector<double> &sampled_point);
-
     Node steer(Node &nearest_node, std::vector<double> &sampled_point);
-
     bool check_collision(Node &nearest_node, Node &new_node);
-
     bool is_goal(Node &latest_added_node, double goal_x, double goal_y);
-
     std::vector<Node> find_path(std::vector<Node> &tree, Node &latest_added_node);
-
-
     // RRT* methods
     double cost(std::vector<Node> &tree, Node &node);
-
     double line_cost(Node &n1, Node &n2);
-
     std::vector<int> near(std::vector<Node> &tree, Node &node);
 
 };
