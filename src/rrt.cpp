@@ -296,7 +296,7 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
 //    }
 
     // RRT main loop:
-    std::cout << "hello hello hello hello  "  << std::endl;
+
     for(int i = 0; i < iteration; i++){
         std::vector<double> sampled = sample();
 
@@ -310,7 +310,7 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
 
         nearest_node_index = nearest(tree, sampled);
         Node new_node = steer(tree[nearest_node_index],sampled);
-//        bool collision = check_collision(tree[nearest_node_index], new_node);
+        bool collision = check_collision(tree[nearest_node_index], new_node);
 //
 //        if(collision) {
 //            continue;
@@ -322,6 +322,8 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
 //             }
 //        }
     }
+
+    std::cout << "hello hello hello hello  " << path.size() << std::endl;
 
 
 
@@ -473,8 +475,8 @@ bool RRT::check_collision(Node &nearest_node, Node &new_node) {
     int step_size  = (int)(dist / gridMap_dynamic.info.resolution); // we need to check each grid cell for collision or not
     for (int i = 0; i < step; i++) {
 
-        int x = (i / step_size) * (new_node.x - nearest_node.x) + nearest_node.x;
-        int y = (i / step_size) * (new_node.y - nearest_node.y) + nearest_node.y;
+        double x = (i / step_size) * (new_node.x - nearest_node.x) + nearest_node.x;
+        double y = (i / step_size) * (new_node.y - nearest_node.y) + nearest_node.y;
 
         int col = get_col(x);
         int row = get_row(y);
@@ -485,6 +487,8 @@ bool RRT::check_collision(Node &nearest_node, Node &new_node) {
             break;
         }
     }
+
+    std:: cout<< step_size << std::endl;
 
     return collision;
 }
