@@ -41,7 +41,7 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     vector<float> waypoint_data1;
     vector<float> waypoint_data2;
     vector<float> waypoint_data3;
-    for (int i = 0; i < waypoint_length; i+=1200) {
+    for (int i = 0; i < waypoint_length; i+=800) {
         waypoint_data1.push_back(waypoint_data_long[0][i]);
         waypoint_data2.push_back(waypoint_data_long[1][i]);
         waypoint_data3.push_back(waypoint_data_long[2][i]);
@@ -58,7 +58,6 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     path_line_pub = nh_.advertise<visualization_msgs::Marker>( "/path_lines", 0 );
     waypoint_marker.header.frame_id = "map"; waypoint_marker.ns = "waypoint_vis";
     waypoint_marker.type = visualization_msgs::Marker::SPHERE; waypoint_marker.action = visualization_msgs::Marker::ADD;
-    // waypoint_marker.pose.orientation.x = 0.0; waypoint_marker.pose.orientation.y = 0.0;  waypoint_marker.pose.orientation.z = 0.0; waypoint_marker.pose.orientation.w = 1.0;
     waypoint_marker.scale.x = 0.2; waypoint_marker.scale.y = 0.2; waypoint_marker.scale.z = 0.1;
     waypoint_marker.color.a = 1.0; waypoint_marker.color.r = 0.0; waypoint_marker.color.g = 1.0; waypoint_marker.color.b = 0.0;
     waypoint_marker.id = 0;
@@ -202,7 +201,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     }
     waypoint_x = waypoint_data[0][ind_min];
     waypoint_y = waypoint_data[1][ind_min];
-    cout << "1" << endl;
+    // cout << "1" << endl;
     // prevent waypoint from collision
     if (gridMap_dynamic.data[row_col_to_index(get_row(waypoint_y), get_col(waypoint_x))] == 100) {
         if (ind_min < waypoint_length-1) {
@@ -231,16 +230,16 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     root.cost = 0;
     root.is_root = true;
     tree.push_back(root);
-    cout << "2" << endl;
+    // cout << "2" << endl;
     for(int i = 0; i < iteration; i++){
-        std::vector<double> sampled = sample();
+        std::vector<double> sampled = sample(currentX, currentY, currentTheta);
         nearest_node_index = nearest(tree, sampled);
         Node new_node = steer(tree[nearest_node_index], sampled);
-        float new_node_laser_x = (new_node.x - currentX) * cos(-currentTheta) - (new_node.x - currentY) * sin(-currentTheta);
-        float nearest_node_laser_x = (tree[nearest_node_index].x - currentX) * cos(-currentTheta) - (tree[nearest_node_index].x - currentY) * sin(-currentTheta);
-        if (new_node_laser_x < nearest_node_laser_x) {
-            continue;
-        }
+        // float new_node_laser_x = (new_node.x - currentX) * cos(-currentTheta) - (new_node.x - currentY) * sin(-currentTheta);
+        // float nearest_node_laser_x = (tree[nearest_node_index].x - currentX) * cos(-currentTheta) - (tree[nearest_node_index].x - currentY) * sin(-currentTheta);
+        // if (new_node_laser_x < nearest_node_laser_x) {
+        //     continue;
+        // }
         // check collision
         bool collision = check_collision(tree[nearest_node_index], new_node);
         if(collision) {
@@ -267,7 +266,6 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
             }
             tree.push_back(new_node);
         }
-        // cout << "hello" << endl;
         // tree line visualization
         tree_line_marker.points.clear();
         geometry_msgs::Point p1;
@@ -286,7 +284,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
             break;
         }
     }
-    cout << "3" << endl;
+    // cout << "3" << endl;
     // tree node visualization
     for (int i = 0; i < tree.size(); i++) {
         tree_node_marker.pose.position.x = tree[i].x;
@@ -311,7 +309,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
         path_line_marker.points.push_back(p3);
     }
     path_line_pub.publish(path_line_marker);
-    cout << "4" << endl;
+    // cout << "4" << endl;
     if (path.size() > 0) {
         // find the closest point in pass
         distance_min = 10000;
@@ -398,14 +396,14 @@ double RRT::convert_to_Theta(geometry_msgs::Quaternion msg){
     return yaw;
 }
 
-std::vector<double> RRT::sample() {
+std::vector<double> RRT::sample(float currentX, float currentY, float currentTheta) {
     // This method returns a sampled point from the free space
     // You should restrict so that it only samples a small region
     // of interest around the car's current position
     // Args:
     // Returns:
     //     sampled_point (std::vector<double>): the sampled point in free space
-
+    
     std::uniform_real_distribution<double> x_dist{0.2, sample_depth}; // need tuning
     std::uniform_real_distribution<double> y_dist{-sample_width, sample_width}; // need tuning
     std::vector<double> sampled_point;
@@ -414,13 +412,19 @@ std::vector<double> RRT::sample() {
         double x = x_dist(gen); // x and y range in header file could be adjusted
         double y = y_dist(gen); //
         // transform from laser frame to map frame
+        // float rot_x = (x - currentX) * cos(-currentTheta) - (y - currentY) * sin(-currentTheta);
+        // float rot_y = (x - currentX) * cos(-currentTheta) - (y - currentY) * sin(-currentTheta);
         int col = get_col(transform(x, y).point.x);
         int row = get_row(transform(x, y).point.y);
+        // int col = get_col(rot_x);
+        // int row = get_row(rot_y);
         int index = row_col_to_index(row, col); // get index in grid map
         
         if (gridMap_final.data[index] == 0) { // check free space
             sampled_point.push_back(transform(x, y).point.x);
             sampled_point.push_back(transform(x, y).point.y);
+            // sampled_point.push_back(rot_x);
+            // sampled_point.push_back(rot_x);
             flag = false;
         }
     }
@@ -450,7 +454,6 @@ int RRT::nearest(std::vector<Node> &tree, std::vector<double> &sampled_point) {
 
     return nearest_node;
 }
-
 
 Node RRT::steer(Node &nearest_node, std::vector<double> &sampled_point) {
     // The function steer:(x,y)->z returns a point such that z is “closer”

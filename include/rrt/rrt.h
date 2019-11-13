@@ -119,7 +119,7 @@ private:
     void scan_callback(const sensor_msgs::LaserScan::ConstPtr& scan_msg);
 
     // RRT methods
-    std::vector<double> sample();
+    std::vector<double> sample(float currentX, float currentY, float currentTheta);
     int nearest(std::vector<Node> &tree, std::vector<double> &sampled_point);
     Node steer(Node &nearest_node, std::vector<double> &sampled_point);
     bool check_collision(Node &nearest_node, Node &new_node);

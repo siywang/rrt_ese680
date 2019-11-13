@@ -9,9 +9,9 @@ neighbor_dist: 1.0
 
 # Pure Pursuit
 # angle coefficient
-angle_factor: 0.4
-nominal_speed: 1.0
-angle_speed: 1.0
+angle_factor: 0.3
+nominal_speed: 1.5
+angle_speed: 1.5
 
 # Topics that RRT listens to
 # TODO: change this to the pose topic published particle filter
