@@ -16,5 +16,5 @@ scan_topic: "scan"
 
 # Parameters for RRT
 step: 0.3 # used for expanding the tree
-goal_threshold: 0.15 # close enough to goal
+goal_threshold: 0.2 # close enough to goal
 iteration: 200 # main loop iteration nums
