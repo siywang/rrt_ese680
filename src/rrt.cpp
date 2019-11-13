@@ -34,7 +34,7 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     vector<float> waypoint_data1;
     vector<float> waypoint_data2;
     vector<float> waypoint_data3;
-    for (int i = 0; i < waypoint_length; i+=250) {
+    for (int i = 0; i < waypoint_length; i+=800) {
         waypoint_data1.push_back(waypoint_data_long[0][i]);
         waypoint_data2.push_back(waypoint_data_long[1][i]);
         waypoint_data3.push_back(waypoint_data_long[2][i]);
@@ -44,6 +44,35 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     waypoint_data.push_back(waypoint_data3);
     waypoint_length = waypoint_data[0].size();
 
+    // pre-set the visualization objects ////////////////////////////////////////////////////////
+    waypoint_pub = nh_.advertise<visualization_msgs::Marker>( "/waypoint_vis", 0 );
+    tree_lines_pub = nh_.advertise<visualization_msgs::Marker>( "/tree_lines", 0 );
+    tree_nodes_pub = nh_.advertise<visualization_msgs::Marker>( "/tree_nodes", 0 );
+    path_line_pub = nh_.advertise<visualization_msgs::Marker>( "/path_line", 0 );
+    waypoint_marker.header.frame_id = "map"; waypoint_marker.ns = "waypoint_vis";
+    waypoint_marker.type = visualization_msgs::Marker::SPHERE; waypoint_marker.action = visualization_msgs::Marker::ADD;
+    waypoint_marker.pose.orientation.x = 0.0; waypoint_marker.pose.orientation.y = 0.0;  waypoint_marker.pose.orientation.z = 0.0; waypoint_marker.pose.orientation.w = 1.0;
+    waypoint_marker.scale.x = 0.2; waypoint_marker.scale.y = 0.2; waypoint_marker.scale.z = 0.1;
+    waypoint_marker.color.a = 1.0; waypoint_marker.color.r = 0.0; waypoint_marker.color.g = 1.0; waypoint_marker.color.b = 0.0;
+    waypoint_marker.id = 0;
+    tree_node_marker.header.frame_id = "map"; tree_node_marker.ns = "tree_lines_vis";
+    tree_node_marker.type = visualization_msgs::Marker::SPHERE; tree_node_marker.action = visualization_msgs::Marker::ADD;
+    tree_node_marker.pose.orientation.x = 0.0; tree_node_marker.pose.orientation.y = 0.0;  tree_node_marker.pose.orientation.z = 0.0; tree_node_marker.pose.orientation.w = 1.0;
+    tree_node_marker.scale.x = 0.1; tree_node_marker.scale.y = 0.1; tree_node_marker.scale.z = 0.1;
+    tree_node_marker.color.a = 1.0; tree_node_marker.color.r = 1.0; tree_node_marker.color.g = 0.0; tree_node_marker.color.b = 0.0;
+    tree_node_marker.id = 0;
+    tree_line_marker.header.frame_id = "map"; tree_line_marker.ns = "tree_nodes_vis";
+    tree_line_marker.type = visualization_msgs::Marker::SPHERE; tree_line_marker.action = visualization_msgs::Marker::ADD;
+    tree_line_marker.pose.orientation.x = 0.0; tree_line_marker.pose.orientation.y = 0.0;  tree_line_marker.pose.orientation.z = 0.0; tree_line_marker.pose.orientation.w = 1.0;
+    tree_line_marker.scale.x = 0.2; tree_line_marker.scale.y = 0.2; tree_line_marker.scale.z = 0.1;
+    tree_line_marker.color.a = 1.0; tree_line_marker.color.r = 0.0; tree_line_marker.color.g = 0.0; tree_line_marker.color.b = 0.0;
+    tree_line_marker.id = 0;
+    path_line_marker.header.frame_id = "map"; path_line_marker.ns = "my_namespace";
+    path_line_marker.type = visualization_msgs::Marker::SPHERE; path_line_marker.action = visualization_msgs::Marker::ADD;
+    path_line_marker.pose.orientation.x = 0.0; path_line_marker.pose.orientation.y = 0.0;  path_line_marker.pose.orientation.z = 0.0; path_line_marker.pose.orientation.w = 1.0;
+    path_line_marker.scale.x = 0.2; path_line_marker.scale.y = 0.2; path_line_marker.scale.z = 0.1;
+    path_line_marker.color.a = 1.0; path_line_marker.color.r = 0.0; path_line_marker.color.g = 0.0; path_line_marker.color.b = 0.0;
+    path_line_marker.id = 0;
 
 
     // ROS publishers // TODO: create publishers for the the drive topic, and other topics you might need
@@ -99,27 +128,31 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
      *
      */
 
+    /*
+     * Generally, we need to transform from laser frame to map frame, the gird map is 2d (row, col), but, how we store those data is 1D vector.
+     * we need to change a point ( col, row) to index
+     */
+
     std::vector<float> ranges = scan_msg->ranges;
     // the following is for dynamic layer
     for (int i = 180; i < 901; i++) { // 180 degrees in front of the car
         double range = ranges[i];
         if (std::isnan(range) || std::isinf(range)) continue; // remove nan and inf
-        float angles = scan_msg->angle_min + scan_msg->angle_increment * (float) i;
+        float angles = scan_msg->angle_min + scan_msg->angle_increment * (float) i; // find range angle
         double x = range * cos((double) angles), y = range * sin((double) angles); // in laser frame
 
-        // now transform   transform(x,y)
-        int col = get_col(transform(x, y).point.x);
-        int row = get_row(transform(x, y).point.y);
-
+        // now transform
+        int col = get_col(transform(x, y).point.x); // transform point from laser frame to /map
+        int row = get_row(transform(x, y).point.y); // transform point from laser frame to /map
 
         //inflation
         for (int j = -inf; j <= inf; j++) {
             for (int k = -inf; k <= inf; k++) {
                 int col_inf = col - k;
-                int row_inf = row - j; // inf: inflation
+                int row_inf = row - j; // 'inf' stands for inflation
                 int index_inf = row_col_to_index(row_inf, col_inf);// 1D index
-                gridMap_dynamic.data[index_inf] = range > lookahead_dist ? 0 : 100;
-               // gridMap_dynamic.data[index_inf] = 100;
+               // gridMap_dynamic.data[index_inf] = range > lookahead_dist ? 0 : 100;
+               gridMap_dynamic.data[index_inf] = 100;
             }
         }
     }
@@ -131,8 +164,8 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
 
     map_pub.publish(gridMap_final); // publish the final grid map
 
-    // clear obstacles after passing it
-    gridMap_dynamic.data.assign(gridMap_dynamic.info.height * gridMap_dynamic.info.width,0);
+
+    gridMap_dynamic.data.assign(gridMap_dynamic.info.height * gridMap_dynamic.info.width,0);// clear obstacles after passing it
     std::cout << "height: " << gridMap_dynamic.info.height << std::endl;
     std::cout << "width: " << gridMap_dynamic.info.width << std::endl;
     std::cout << "resolution: " << gridMap_dynamic.info.resolution << std::endl;
@@ -185,22 +218,33 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
     // Args:
     //    pose_msg (*PoseStamped): pointer to the incoming pose message
     // Returns:
-    // TODO: fill in the RRT main loop
-    // TODO: fill in the RRT main loop
-    // TODO: fill in the RRT main loop
+
+
+    /*
+     * 1.Now we need to find a point as our long term goal point, which we can get it from waypoints, by seting a lookahead distance and then find the best one.
+     * (very similar to last lab)
+     * 2. use that point as our RRT long term goal
+     * 3. find a path using rrt
+     * 4. track that path
+     *
+     */
+
     car_pose_msg = odom_msg->pose.pose;
     double currentX = car_pose_msg.position.x; //vehicle pose X
     double currentY = car_pose_msg.position.y; //vehicle pose Y
     double currentTheta = convert_to_Theta(car_pose_msg.orientation);
 
+    float steering_offset = -0.005;
+    float angle_factor = 0.1;
     float csv_offset_x = 0;
     float csv_offset_y = 0;
 
-    float waypoint_x = 0;
-    float waypoint_y=  0;
+    double waypoint_x = 0;
+    double waypoint_y=  0;
     double waypoint_distance = sqrt( pow(currentX - waypoint_x, 2) + pow(currentY - waypoint_y, 2) );
     float distance_min = 10000;
     float ind_min = 0;
+
 
     for(int i = 0; i < waypoint_length; i += 1){
         double distance = sqrt( pow(currentX - (waypoint_data[0][i] - csv_offset_x), 2) + pow(currentY - (waypoint_data[1][i] - csv_offset_y), 2) );
@@ -213,46 +257,94 @@ void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry
     }
 
     last_index = (int)ind_min;
+
     waypoint_x = waypoint_data[0][last_index];
     waypoint_y = waypoint_data[1][last_index];
 
-    rot_waypoint_x = (waypoint_x - currentX) * cos(-currentTheta) - (waypoint_y - currentY) * sin(-currentTheta);
-    rot_waypoint_y = (waypoint_x - currentX) * sin(-currentTheta) + (waypoint_y - currentY) * cos(-currentTheta);
+    // visualization
+    waypoint_marker.pose.position.x = waypoint_x;
+    waypoint_marker.pose.position.y = waypoint_y;
+    waypoint_marker.id += 1;
+    waypoint_marker.header.stamp = ros::Time();
+    waypoint_marker.lifetime = ros::Duration(0.3);
+    waypoint_pub.publish(waypoint_marker);
 
-    // TODO: should I use waypoint_x or rot_waypoint_x ????
+//    rot_waypoint_x = (waypoint_x - currentX) * cos(-currentTheta) - (waypoint_y - currentY) * sin(-currentTheta);
+//    rot_waypoint_y = (waypoint_x - currentX) * sin(-currentTheta) + (waypoint_y - currentY) * cos(-currentTheta);
+
     // find goal by selecting the best point in way point at ceratin lookahead distance
-    double goal_x = rot_waypoint_x;
-    double goal_y = rot_waypoint_y;
+//    double goal_x = waypoint_x;
+//    double goal_y = waypoint_y;
 
-    std:: cout << "??????? " << waypoint_x << std::endl;
-    std:: cout << "??????? " << waypoint_y << std::endl;
+    // Please check the corretness of RRT main loop
 
-    // tree as std::vector
-    std::vector<Node> tree;
-    std::vector<Node> path;
+    std::vector<Node> tree; // create tree
+    std::vector<Node> path; // create a path
     Node root;
     root.x = car_pose_msg.position.x;
     root.y = car_pose_msg.position.y;
     root.is_root = true;
+    tree.push_back(root);
 
-    // RRT main loop
-//    for(int i = 0; i < iteration; i++){
-//        std::vector<double> sampled = sample();
-//        nearest_node_index = nearest(tree, sampled);
-//        Node new_node = steer(tree[nearest_node_index],sampled);
+    int col = get_col(waypoint_x);
+    int row = get_row(waypoint_y);
+    int index = row_col_to_index(row,col);
+
+//    if(gridMap_final.data[index] == 100){
+//        waypoint_x = currentX;
+//        waypoint_y = currentY;
+//    }
+
+    // RRT main loop:
+    std::cout << "hello hello hello hello  "  << std::endl;
+    for(int i = 0; i < iteration; i++){
+        std::vector<double> sampled = sample();
+
+        tree_node_marker.pose.position.x = sampled[0];
+        tree_node_marker.pose.position.y = sampled[1];
+        tree_node_marker.id += 1;
+        tree_node_marker.header.stamp = ros::Time();
+        tree_node_marker.lifetime = ros::Duration(0.1);
+        tree_nodes_pub.publish(tree_node_marker);
+
+
+        nearest_node_index = nearest(tree, sampled);
+        Node new_node = steer(tree[nearest_node_index],sampled);
 //        bool collision = check_collision(tree[nearest_node_index], new_node);
 //
 //        if(collision) {
 //            continue;
 //        } else{
 //             tree.push_back(new_node);
-//             if(is_goal(new_node, goal_x,goal_y)){
+//             if(is_goal(new_node, waypoint_x,waypoint_y)){
 //                 path = find_path(tree, new_node);
 //                 break;
 //             }
 //        }
-//    }
+    }
 
+
+
+//    float ind_min_local = 0;
+//    float distance_min_local = 10000;
+//
+//    for(int i = 0; i < path.size(); i++){
+//        double distance = sqrt( pow(currentX - path[i].x, 2) + pow(currentY - path[i].y, 2) );
+//        if (distance_min_local > distance && distance >= look_ahead_distance ) {
+//            distance_min_local = distance;
+//            ind_min_local = i;
+//        }
+//    }
+//
+//    int index_short_goal = (int)ind_min_local;
+//
+//     rot_waypoint_x = (path[index_short_goal].x - currentX) * cos(-currentTheta) - (path[index_short_goal].y - currentY) * sin(-currentTheta);
+//     rot_waypoint_y = (path[index_short_goal].x - currentX) * sin(-currentTheta) + ( path[index_short_goal].y- currentY) * cos(-currentTheta);
+
+//    steering_angle = angle_factor * (2 * rot_waypoint_y) / (pow(rot_waypoint_x, 2) + pow(rot_waypoint_y, 2));
+//    steering_angle += steering_offset;
+//
+//    setAngleAndVelocity(steering_angle);
 
     // path found as Path message
 
@@ -280,6 +372,12 @@ std::vector<double> RRT::sample() {
     // Returns:
     //     sampled_point (std::vector<double>): the sampled point in free space
 
+    /*
+     * Sample a point around the car and then transform that to map frame.
+     * For x_dist and gen: Please look the link in header file, its quite helpful
+     */
+
+
     std::vector<double> sampled_point;
     bool flag = true;
     while (flag) {
@@ -292,14 +390,14 @@ std::vector<double> RRT::sample() {
 
         int index = row_col_to_index(row, col); // get index in grid map
 
-        if (gridMap_final.data[index] == 0) { // check free space
-            sampled_point.push_back(x);
-            sampled_point.push_back(y);
+        if (gridMap_final.data[index] == 0) { // check its in free space
+            sampled_point.push_back(transform(x,y).point.x);
+            sampled_point.push_back(transform(x,y).point.y);
             flag = false;
         }
     }
 
-    return sampled_point;
+    return sampled_point; // sample[0]: means x coordinate sample[y] means y coordinate
 }
 
 
@@ -313,12 +411,14 @@ int RRT::nearest(std::vector<Node> &tree, std::vector<double> &sampled_point) {
 
     int nearest_node = 0;
     double current_dist = 0;
-    double min_dist = FLT_MAX;
+    double min_dist = FLT_MAX; // float max
 
-    for (auto &i : tree) {
-        current_dist = sqrt(pow(i.x - sampled_point[0], 2) + pow(i.y - sampled_point[1], 2));
+    for (int i = 0; i < tree.size();i++) {
+        current_dist = sqrt(pow(tree[i].x - sampled_point[0], 2) + pow(tree[i].y - sampled_point[1], 2)); // for each node in tree, fins the shortest one.
         if (current_dist < min_dist) {
+            nearest_node = i;
             min_dist = current_dist;
+
         }
     }
 
@@ -343,14 +443,14 @@ Node RRT::steer(Node &nearest_node, std::vector<double> &sampled_point) {
     Node new_node;
 
     double dist = sqrt(pow(nearest_node.x - sampled_point[0], 2) + pow(nearest_node.y - sampled_point[1], 2));
-    if (dist < step) {
+    if (dist < step) { // connect sample point
         new_node.x = sampled_point[0];
         new_node.y = sampled_point[1];
         new_node.is_root = false;
         new_node.parent = nearest_node_index;
     } else {
-        // expand the tree towards the sample point
-        new_node.x = (step / dist) * (sampled_point[0] - nearest_node.x) + nearest_node.x; //
+        // expand the tree towards the sample point with step size
+        new_node.x = (step / dist) * (sampled_point[0] - nearest_node.x) + nearest_node.x;
         new_node.y = (step / dist) * (sampled_point[1] - nearest_node.y) + nearest_node.y;
         new_node.is_root = false;
         new_node.parent = nearest_node_index;
@@ -369,13 +469,15 @@ bool RRT::check_collision(Node &nearest_node, Node &new_node) {
     //    collision (bool): true if in collision, false otherwise
 
     bool collision = false;
-    int iter = 10; // this could be adjusted
-    for (int i = 0; i < iter; i++) {
-        new_node.x = (i / iter) * (new_node.x - nearest_node.x) + nearest_node.x;
-        new_node.y = (i / iter) * (new_node.y - nearest_node.y) + nearest_node.y;
+    double dist = sqrt(pow(nearest_node.x - new_node.x, 2) + pow(nearest_node.y - new_node.y, 2));
+    int step_size  = (int)(dist / gridMap_dynamic.info.resolution); // we need to check each grid cell for collision or not
+    for (int i = 0; i < step; i++) {
 
-        int col = get_col(new_node.x);
-        int row = get_row(new_node.y);
+        int x = (i / step_size) * (new_node.x - nearest_node.x) + nearest_node.x;
+        int y = (i / step_size) * (new_node.y - nearest_node.y) + nearest_node.y;
+
+        int col = get_col(x);
+        int row = get_row(y);
 
         int index = row_col_to_index(row, col); // get index in grid map
         if (gridMap_final.data[index] == 100) {
@@ -400,7 +502,8 @@ bool RRT::is_goal(Node &latest_added_node, double goal_x, double goal_y) {
 
     bool close_enough = false;
     double dist = sqrt(pow(latest_added_node.x - goal_x, 2) + pow(latest_added_node.y - goal_y, 2));
-    close_enough = dist < goal_threshold; // ....
+    close_enough = dist < goal_threshold; // smaller than threshold then we arrive at the goal
+
     return close_enough;
 }
 
@@ -424,6 +527,25 @@ std::vector<Node> RRT::find_path(std::vector<Node> &tree, Node &latest_added_nod
 
     std::reverse(found_path.begin(), found_path.end());
     return found_path;
+}
+
+
+void RRT::setAngleAndVelocity(float u) {
+
+    ackermann_msgs::AckermannDriveStamped drive_msg;
+    if(u < -0.4189){
+        u = -0.4189;
+    }
+    if(u > 0.4189){
+        u = 0.4189;
+    }
+
+    drive_msg.drive.steering_angle = u; //Sets steering angle
+    drive_msg.header.stamp = ros::Time::now();
+    drive_msg.header.frame_id = "laser";
+    drive_msg.drive.speed = nominal_speed - (nominal_speed - angle_speed) * fabs(u) / 0.4189;
+    drive_pub.publish(drive_msg); //Sets velocity based on steering angle conditions
+
 }
 
 //----------------------------------------------------------------------------------------------------------------------
