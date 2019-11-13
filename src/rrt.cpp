@@ -36,7 +36,6 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     nh_.getParam("sample_width", sample_width);
     nh_.getParam("neighbor_dist", neighbor_dist);
     
-
     vector<vector<float>> waypoint_data_long = read_way_point_CSVfile("/home/lucerna/MEGA/ESE680/zirui_zang_ws/src/rrt/gtpose.csv");
     waypoint_length = waypoint_data_long[0].size();
     vector<float> waypoint_data1;
@@ -82,16 +81,15 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     path_line_marker.color.a = 1.0; path_line_marker.color.r = 0.0; path_line_marker.color.g = 1.0; path_line_marker.color.b = 0.0;
     path_line_marker.id = 0;
     
- 
-
     // ROS publishers // TODO: create publishers for the the drive topic, and other topics you might need
     drive_pub = nh_.advertise<ackermann_msgs::AckermannDriveStamped>("drive", 10);
     map_pub = nh_.advertise<nav_msgs::OccupancyGrid>("gridMap", 1, true);
 
     // ROS subscribers // TODO: create subscribers as you need
-    // pf_sub_ = nh_.subscribe(pose_topic, 10, &RRT::pf_callback, this);
+    // pose_sub = nh_.subscribe(pose_topic, 10, &RRT::pf_callback, this);
     scan_sub_ = nh_.subscribe(scan_topic, 10, &RRT::scan_callback, this);
     pose_sub = nh_.subscribe("gt_pose", 1, &RRT::pf_callback, this);
+
 
     //  create a occupancy grid
     boost::shared_ptr<nav_msgs::MapMetaData const> levine_metadata_ptr;
@@ -178,13 +176,11 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     //    pose_msg (*PoseStamped): pointer to the incoming pose message
     // Returns:
 
-    // car_pose_msg = odom_msg->pose.pose;
-    // double currentX = car_pose_msg.position.x; //vehicle pose X
-    // double currentY = car_pose_msg.position.y; //vehicle pose Y
-    float car_pose_x = odom_msg->pose.position.x;
-    float car_pose_y = odom_msg->pose.position.y;
-    float currentX = car_pose_x;
-    float currentY = car_pose_y;
+    // double currentX = odom_msg->pose.pose.position.x; //vehicle pose X
+    // double currentY = odom_msg->pose.pose.position.y; //vehicle pose Y
+    // float currentTheta = convert_to_Theta(odom_msg->pose.pose.orientation);
+    float currentX = odom_msg->pose.position.x;
+    float currentY = odom_msg->pose.position.y;
     float currentTheta = convert_to_Theta(odom_msg->pose.orientation);
 
     float csv_offset_x = 0;
@@ -206,7 +202,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     }
     waypoint_x = waypoint_data[0][ind_min];
     waypoint_y = waypoint_data[1][ind_min];
-
+    cout << "1" << endl;
     // prevent waypoint from collision
     if (gridMap_dynamic.data[row_col_to_index(get_row(waypoint_y), get_col(waypoint_x))] == 100) {
         if (ind_min < waypoint_length-1) {
@@ -230,15 +226,21 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     std::vector<Node> tree;
     std::vector<Node> path;
     Node root;
-    root.x = car_pose_x;
-    root.y = car_pose_y;
+    root.x = currentX;
+    root.y = currentY;
     root.cost = 0;
     root.is_root = true;
     tree.push_back(root);
+    cout << "2" << endl;
     for(int i = 0; i < iteration; i++){
         std::vector<double> sampled = sample();
         nearest_node_index = nearest(tree, sampled);
         Node new_node = steer(tree[nearest_node_index], sampled);
+        float new_node_laser_x = (new_node.x - currentX) * cos(-currentTheta) - (new_node.x - currentY) * sin(-currentTheta);
+        float nearest_node_laser_x = (tree[nearest_node_index].x - currentX) * cos(-currentTheta) - (tree[nearest_node_index].x - currentY) * sin(-currentTheta);
+        if (new_node_laser_x < nearest_node_laser_x) {
+            continue;
+        }
         // check collision
         bool collision = check_collision(tree[nearest_node_index], new_node);
         if(collision) {
@@ -252,7 +254,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
                 float new_cost = tree[neighborhood[i]].cost + line_cost(tree[neighborhood[i]], new_node);
                 if (new_node.cost > new_cost) {
                     new_node.cost = new_cost;
-                    new_node.parent = i;
+                    new_node.parent = neighborhood[i];
                 }
             }
             // Rewire the tree
@@ -260,7 +262,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
                 float neighbor_cost = new_node.cost + line_cost(tree[neighborhood[i]], new_node);
                 if (tree[neighborhood[i]].cost > neighbor_cost) {
                     tree[neighborhood[i]].cost = neighbor_cost;
-                    tree[neighborhood[i]].parent = neighborhood.size(); // position of the new_node
+                    tree[neighborhood[i]].parent = tree.size(); // position of the new_node
                 }
             }
             tree.push_back(new_node);
@@ -284,6 +286,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
             break;
         }
     }
+    cout << "3" << endl;
     // tree node visualization
     for (int i = 0; i < tree.size(); i++) {
         tree_node_marker.pose.position.x = tree[i].x;
@@ -308,7 +311,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
         path_line_marker.points.push_back(p3);
     }
     path_line_pub.publish(path_line_marker);
-    
+    cout << "4" << endl;
     if (path.size() > 0) {
         // find the closest point in pass
         distance_min = 10000;
@@ -519,7 +522,6 @@ bool RRT::is_goal(Node &latest_added_node, double goal_x, double goal_y) {
     //   goal_y (double): y coordinate of the current goal
     // Returns:
     //   close_enough (bool): true if node close enough to the goal
-
     bool close_enough = false;
     double dist = sqrt(pow(latest_added_node.x - goal_x, 2) + pow(latest_added_node.y - goal_y, 2));
     close_enough = dist < goal_threshold; // ....
