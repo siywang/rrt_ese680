@@ -85,9 +85,9 @@ RRT::RRT(ros::NodeHandle &nh) : nh_(nh), gen((std::random_device()) ()) {
     map_pub = nh_.advertise<nav_msgs::OccupancyGrid>("gridMap", 1, true);
 
     // ROS subscribers // TODO: create subscribers as you need
-    // pose_sub = nh_.subscribe(pose_topic, 10, &RRT::pf_callback, this);
+    pose_sub = nh_.subscribe(pose_topic, 10, &RRT::pf_callback, this);
     scan_sub_ = nh_.subscribe(scan_topic, 10, &RRT::scan_callback, this);
-    pose_sub = nh_.subscribe("gt_pose", 1, &RRT::pf_callback, this);
+    // pose_sub = nh_.subscribe("gt_pose", 1, &RRT::pf_callback, this);
 
 
     //  create a occupancy grid
@@ -143,9 +143,11 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
         float angles = scan_msg->angle_min + scan_msg->angle_increment * (float) i;
         float x = range * cos((float) angles), y = range * sin((float) angles); // in laser frame
 
-        // now transform   transform(x,y)
-        int col = get_col(transform(x, y).point.x);
-        int row = get_row(transform(x, y).point.y);
+        // now transform 
+        float rot_x = x * cos(-currentTheta) + y * sin(-currentTheta) + currentX;
+        float rot_y = -x * sin(-currentTheta) + y * cos(-currentTheta) + currentY; 
+        int col = get_col(rot_x);
+        int row = get_row(rot_y);
 
         //inflation
         for (int j = -inf; j <= inf; j++) {
@@ -167,20 +169,20 @@ void RRT::scan_callback(const sensor_msgs::LaserScan::ConstPtr &scan_msg) {
 }
 
 
-// void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry_msgs::PoseStamped::ConstPtr &pose_msg
-void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //geometry_msgs::PoseStamped::ConstPtr &pose_msg
+void RRT::pf_callback(const nav_msgs::Odometry::ConstPtr &odom_msg) { //geometry_msgs::PoseStamped::ConstPtr &pose_msg
+// void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //geometry_msgs::PoseStamped::ConstPtr &pose_msg
     // The pose callback when subscribed to particle filter's inferred pose
     // The RRT main loop happens here
     // Args:
     //    pose_msg (*PoseStamped): pointer to the incoming pose message
     // Returns:
 
-    // double currentX = odom_msg->pose.pose.position.x; //vehicle pose X
-    // double currentY = odom_msg->pose.pose.position.y; //vehicle pose Y
-    // float currentTheta = convert_to_Theta(odom_msg->pose.pose.orientation);
-    float currentX = odom_msg->pose.position.x;
-    float currentY = odom_msg->pose.position.y;
-    float currentTheta = convert_to_Theta(odom_msg->pose.orientation);
+    currentX = odom_msg->pose.pose.position.x; //vehicle pose X
+    currentY = odom_msg->pose.pose.position.y; //vehicle pose Y
+    currentTheta = convert_to_Theta(odom_msg->pose.pose.orientation);
+    // float currentX = odom_msg->pose.position.x;
+    // float currentY = odom_msg->pose.position.y;
+    // float currentTheta = convert_to_Theta(odom_msg->pose.orientation);
 
     float csv_offset_x = 0;
     float csv_offset_y = 0;
@@ -232,7 +234,7 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
     tree.push_back(root);
     // cout << "2" << endl;
     for(int i = 0; i < iteration; i++){
-        std::vector<double> sampled = sample(currentX, currentY, currentTheta);
+        std::vector<double> sampled = sample();
         nearest_node_index = nearest(tree, sampled);
         Node new_node = steer(tree[nearest_node_index], sampled);
         // float new_node_laser_x = (new_node.x - currentX) * cos(-currentTheta) - (new_node.x - currentY) * sin(-currentTheta);
@@ -345,29 +347,29 @@ void RRT::pf_callback(const geometry_msgs::PoseStamped::ConstPtr &odom_msg) { //
 
 }
 
-geometry_msgs::PointStamped RRT::transform(double x, double y) {
-    /*
-     * transformation between /laser and /map frames
-     * Input: x anf y of laser scan in laser frame
-     * Return: transformed point in map frame
-     */
+// geometry_msgs::PointStamped RRT::transform(double x, double y) {
+//     /*
+//      * transformation between /laser and /map frames
+//      * Input: x anf y of laser scan in laser frame
+//      * Return: transformed point in map frame
+//      */
 
-    geometry_msgs::PointStamped before_transform;
-    before_transform.header.frame_id = "/laser";
-    before_transform.point.x = x;
-    before_transform.point.y = y;
+//     geometry_msgs::PointStamped before_transform;
+//     before_transform.header.frame_id = "/laser";
+//     before_transform.point.x = x;
+//     before_transform.point.y = y;
 
-    geometry_msgs::PointStamped after_transform;
-    after_transform.header.frame_id = "/map";
-    try {
-        listener.transformPoint("/map", before_transform, after_transform);
+//     geometry_msgs::PointStamped after_transform;
+//     after_transform.header.frame_id = "/map";
+//     try {
+//         listener.transformPoint("/map", before_transform, after_transform);
 
-    } catch (tf::TransformException &ex) {
-        ROS_ERROR("%s", ex.what());
-        ros::Duration(1.0).sleep();
-    }
-    return after_transform; // return transformed point
-}
+//     } catch (tf::TransformException &ex) {
+//         ROS_ERROR("%s", ex.what());
+//         ros::Duration(1.0).sleep();
+//     }
+//     return after_transform; // return transformed point
+// }
 
 int RRT::row_col_to_index(int row, int col) {
     return row * gridMap_dynamic.info.width + col; // 1D index in grid map
@@ -396,7 +398,7 @@ double RRT::convert_to_Theta(geometry_msgs::Quaternion msg){
     return yaw;
 }
 
-std::vector<double> RRT::sample(float currentX, float currentY, float currentTheta) {
+std::vector<double> RRT::sample() {
     // This method returns a sampled point from the free space
     // You should restrict so that it only samples a small region
     // of interest around the car's current position
@@ -412,19 +414,19 @@ std::vector<double> RRT::sample(float currentX, float currentY, float currentThe
         double x = x_dist(gen); // x and y range in header file could be adjusted
         double y = y_dist(gen); //
         // transform from laser frame to map frame
-        // float rot_x = (x - currentX) * cos(-currentTheta) - (y - currentY) * sin(-currentTheta);
-        // float rot_y = (x - currentX) * cos(-currentTheta) - (y - currentY) * sin(-currentTheta);
-        int col = get_col(transform(x, y).point.x);
-        int row = get_row(transform(x, y).point.y);
-        // int col = get_col(rot_x);
-        // int row = get_row(rot_y);
+        float rot_x = x * cos(-currentTheta) + y * sin(-currentTheta) + currentX;
+        float rot_y = -x * sin(-currentTheta) + y * cos(-currentTheta) + currentY; 
+        // int col = get_col(transform(x, y).point.x);
+        // int row = get_row(transform(x, y).point.y);
+        int col = get_col(rot_x);
+        int row = get_row(rot_y);
         int index = row_col_to_index(row, col); // get index in grid map
         
         if (gridMap_final.data[index] == 0) { // check free space
-            sampled_point.push_back(transform(x, y).point.x);
-            sampled_point.push_back(transform(x, y).point.y);
-            // sampled_point.push_back(rot_x);
-            // sampled_point.push_back(rot_x);
+            // sampled_point.push_back(transform(x, y).point.x);
+            // sampled_point.push_back(transform(x, y).point.y);
+            sampled_point.push_back(rot_x);
+            sampled_point.push_back(rot_y);
             flag = false;
         }
     }

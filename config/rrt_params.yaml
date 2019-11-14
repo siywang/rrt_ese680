@@ -1,6 +1,5 @@
-
 # inflation size
-inflation: 4
+inflation: 3
 # lookahead distance for finding a waypoint
 lookahead_dist: 1.0
 sample_depth: 3.0
@@ -9,9 +8,9 @@ neighbor_dist: 1.0
 
 # Pure Pursuit
 # angle coefficient
-angle_factor: 0.3
-nominal_speed: 1.5
-angle_speed: 1.5
+angle_factor: 0.1
+nominal_speed: 1.0
+angle_speed: 1.0
 
 # Topics that RRT listens to
 # TODO: change this to the pose topic published particle filter
@@ -24,6 +23,6 @@ scan_topic: "scan"
 # visualization
 
 # Parameters for RRT
-step: 0.3 # used for expanding the tree
-goal_threshold: 0.15 # close enough to goal
-iteration: 100 # main loop iteration nums
+step: 0.4 # used for expanding the tree
+goal_threshold: 0.2 # close enough to goal
+iteration: 50 # main loop iteration nums
